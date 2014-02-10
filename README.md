@@ -3,16 +3,27 @@ Open Laser Control Additions
 ===========================
 
 -mUVe 3D specific peel move still exists and is a function that can be turned on and off, so now you can use the firmware on other SLA based machines without edits.
+
 -Use hardware other than Arduino Mega 2560 and RAMPS, you can select the machines on the list that have enough memory to install it. It has grown in size, chips with less memory may be an issue but this hasn’t been investigated yet.
+
 -Firmware defined laser point size for future features such as W/cm^2 calculation and auto-laser-power setting for resins with W/cm^2 data available.
+
 -EEPROM saves the amount of time the laser has been on and will tell you when you boot how many hours and minutes the laser has been used.
+
 -PPM laser pulsing with specific maximum frequency set in Hz.
+
 -Laser pulsing built right into stepper code so there is no added processing time, delays, or otherwise. Full speed printing.
+
 -Configurable laser power on a scale of 1-100.
+
 -Configurable pulses per mm, default of 10.
+
 -Configurable time on for each laser pulse in microseconds, default is 3000.
+
 -Default connection speed lowered to 115200 for compatibility with more computers.
+
 -Built on and compiles with the latest version of Arduino, main file is now Marlin.ino.
+
 
 M650 is still used at the beginning of the print to define all of the settings for the machine. L*** is still laser power, D** is still the peel distance, S* is still the peel speed in mm/s, Q** is the number of pulses per mm, and C**** is the timing in microseconds. M651 will still call a peel, and should be your layer change GCode. M3 will turn the laser on, and M5 will turn it off. An example of your start GCode for Slic3r, and good starting place for testing would be:
 
