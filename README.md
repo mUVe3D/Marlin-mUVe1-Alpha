@@ -1,30 +1,24 @@
-Marlin firmware development branch, removes the need for mUVe 3D GCode Fixing software. Also fizes homing issues, and allows the use of standard Z axis jog buttons in your printer host software.
+===========================
+Open Laser Control Additions
+===========================
 
-All implemented and working! See MCodes below.
+-mUVe 3D specific peel move still exists and is a function that can be turned on and off, so now you can use the firmware on other SLA based machines without edits.
+-Use hardware other than Arduino Mega 2560 and RAMPS, you can select the machines on the list that have enough memory to install it. It has grown in size, chips with less memory may be an issue but this hasn’t been investigated yet.
+-Firmware defined laser point size for future features such as W/cm^2 calculation and auto-laser-power setting for resins with W/cm^2 data available.
+-EEPROM saves the amount of time the laser has been on and will tell you when you boot how many hours and minutes the laser has been used.
+-PPM laser pulsing with specific maximum frequency set in Hz.
+-Laser pulsing built right into stepper code so there is no added processing time, delays, or otherwise. Full speed printing.
+-Configurable laser power on a scale of 1-100.
+-Configurable pulses per mm, default of 10.
+-Configurable time on for each laser pulse in microseconds, default is 3000.
+-Default connection speed lowered to 115200 for compatibility with more computers.
+-Built on and compiles with the latest version of Arduino, main file is now Marlin.ino.
 
+M650 is still used at the beginning of the print to define all of the settings for the machine. L*** is still laser power, D** is still the peel distance, S* is still the peel speed in mm/s, Q** is the number of pulses per mm, and C**** is the timing in microseconds. M651 will still call a peel, and should be your layer change GCode. M3 will turn the laser on, and M5 will turn it off. An example of your start GCode for Slic3r, and good starting place for testing would be:
 
-M650 D L P S -  *This must be set inside of your starting GCode in Slic3r, it can also be changed at any point during printing.*
+M650 L100 D3 S2 Q10 C3000
 
-
-	D - Set Distance in mm - Set to 0 to remove the peel
-
-	P - Pause in milliseconds - Set to 0 to ignore pause
-
-	L - Laser power, range 0-255 - Default 255
-
-	S - Peel move speed, mm/s - 2mm/s max unless max speed for Z and E axis changed in configuration.h
-
-
-Example: M650 D2 P500 L255 S2 - Peel distance 2mm, pause .5 seconds, laser full-power, peel speed 2 mm/s
-
-
-
-M651 - Initiate the peel move with the settings chosen. *This needs to be input as the layer change GCode in Slic3r.*
-
-
-
-M652 - Turn Laser off
-
+Expect there to be bugs if you download and install this firmware. Keep a close watch on your machine and make sure there is no erratic behavior. So far we are experiencing much improved small detail quality but have yet to work out a perfect profile, so expect some tinkering as well on that aspect. If you work out a good profile yourself please share! 
 
 
 
@@ -78,7 +72,6 @@ Features:
 *   Configurable serial port to support connection of wireless adaptors.
 *   Automatic operation of extruder/cold-end cooling fans based on nozzle temperature
 *   RC Servo Support, specify angle or duration for continuous rotation servos.
-*   Bed Auto Leveling.
 
 The default baudrate is 250000. This baudrate has less jitter and hence errors than the usual 115200 baud, but is less supported by drivers and host-environments.
 
@@ -173,8 +166,6 @@ Implemented G Codes:
 *  G10 - retract filament according to settings of M207
 *  G11 - retract recover filament according to settings of M208
 *  G28 - Home all Axis
-*  G29 - Detailed Z-Probe, probes the bed at 3 points.  You must de at the home position for this to work correctly.
-*  G30 - Single Z Probe, probes bed at current XY location.
 *  G90 - Use Absolute Coordinates
 *  G91 - Use Relative Coordinates
 *  G92 - Set current position to cordinates given
@@ -243,8 +234,6 @@ M Codes
 *  M303 - PID relay autotune S<temperature> sets the target temperature. (default target temperature = 150C)
 *  M304 - Set bed PID parameters P I and D
 *  M400 - Finish all moves
-*  M401 - Lower z-probe if present
-*  M402 - Raise z-probe if present
 *  M500 - stores paramters in EEPROM
 *  M501 - reads parameters from EEPROM (if you need reset them after you changed them temporarily).
 *  M502 - reverts to the default "factory settings".  You still need to store them in EEPROM afterwards if you want to.
@@ -283,69 +272,6 @@ Click the Upload button
 If all goes well the firmware is uploading
 
 That's ok.  Enjoy Silky Smooth Printing.
-
-===============================================
-Instructions for configuring Bed Auto Leveling
-===============================================
-Uncomment the "ENABLE_AUTO_BED_LEVELING" define (commented by default)
-
-You will probably need a swivel Z-MIN endstop in the extruder. A rc servo do a great job.
-Check the system working here: http://www.youtube.com/watch?v=3IKMeOYz-1Q (Enable English subtitles)
-Teasing ;-) video: http://www.youtube.com/watch?v=x8eqSQNAyro
-
-In order to get the servo working, you need to enable:
-
-* \#define NUM_SERVOS 1 // Servo index starts with 0 for M280 command
-
-* \#define SERVO_ENDSTOPS {-1, -1, 0} // Servo index for X, Y, Z. Disable with -1
-
-* \#define SERVO_ENDSTOP_ANGLES {0,0, 0,0, 165,60} // X,Y,Z Axis Extend and Retract angles
-
-
-The first define tells firmware how many servos you have.
-The second tells what axis this servo will be attached to. In the example above, we have a servo in Z axis.
-The third one tells the angle in 2 situations: Probing (165º) and resting (60º). Check this with command M280 P0 S{angle} (example: M280 P0 S60 moves the servo to 60º)
-
-Next you need to define the Z endstop (probe) offset from hotend.
-My preferred method:
-
-* a) Make a small mark in the bed with a marker/felt-tip pen.
-* b) Place the hotend tip as *exactly* as possible on the mark, touching the bed. Raise the hotend 0.1mm (a regular paper thickness) and zero all axis (G92 X0 Y0 Z0);
-* d) Raise the hotend 10mm (or more) for probe clearance, lower the Z probe (Z-Endstop) with M401 and place it just on that mark by moving X, Y and Z;
-* e) Lower the Z in 0.1mm steps, with the probe always touching the mark (it may be necessary to adjust X and Y as well) until you hear the "click" meaning the mechanical endstop was trigged. You can confirm with M119;
-* f) Now you have the probe in the same place as your hotend tip was before. Perform a M114 and write down the values, for example: X:24.3 Y:-31.4 Z:5.1;
-* g) You can raise the z probe with M402 command;
-* h) Fill the defines bellow multiplying the values by "-1" (just change the signal)
-
-
-* \#define X_PROBE_OFFSET_FROM_EXTRUDER -24.3
-* \#define Y_PROBE_OFFSET_FROM_EXTRUDER 31.4
-* \#define Z_PROBE_OFFSET_FROM_EXTRUDER -5.1
-
-
-The following options define the probing positions. These are good starting values.
-I recommend to keep a better clearance from borders in the first run and then make the probes as close as possible to borders:
-
-* \#define LEFT_PROBE_BED_POSITION 30
-* \#define RIGHT_PROBE_BED_POSITION 140
-* \#define BACK_PROBE_BED_POSITION 140
-* \#define FRONT_PROBE_BED_POSITION 30
-
-A few more options:
-
-* \#define XY_TRAVEL_SPEED 6000
-
-X and Y axis travel speed between probes, in mm/min.
-Bear in mind that really fast moves may render step skipping. 6000 mm/min (100mm/s) is a good value.
-
-* \#define Z_RAISE_BEFORE_PROBING 10
-* \#define Z_RAISE_BETWEEN_PROBINGS 10
-
-The Z axis is lifted when traveling to the first probe point by Z_RAISE_BEFORE_PROBING value
-and then lifted when traveling from first to second and second to third point by Z_RAISE_BETWEEN_PROBINGS.
-All values are in mm as usual. 
-
-That's it.. enjoy never having to calibrate your Z endstop neither leveling your bed by hand anymore ;-)
 
 
 

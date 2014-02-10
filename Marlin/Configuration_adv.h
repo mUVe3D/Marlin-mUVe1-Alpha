@@ -197,7 +197,7 @@
 #define X_HOME_RETRACT_MM 5 
 #define Y_HOME_RETRACT_MM 5 
 #define Z_HOME_RETRACT_MM 1 
-//#define QUICK_HOME  //if this is defined, if both x and y are to be homed, a diagonal move will be performed initially.
+#define QUICK_HOME  //if this is defined, if both x and y are to be homed, a diagonal move will be performed initially.
 
 #define AXIS_RELATIVE_MODES {false, false, false, false}
 
@@ -269,26 +269,6 @@
 
 // Enable the option to stop SD printing when hitting and endstops, needs to be enabled from the LCD menu when this option is enabled.
 //#define ABORT_ON_ENDSTOP_HIT_FEATURE_ENABLED
-
-// Babystepping enables the user to control the axis in tiny amounts, independently from the normal printing process
-// it can e.g. be used to change z-positions in the print startup phase in realtime
-// does not respect endstops!
-//#define BABYSTEPPING
-#ifdef BABYSTEPPING
-  #define BABYSTEP_XY  //not only z, but also XY in the menu. more clutter, more functions
-  #define BABYSTEP_INVERT_Z false  //true for inverse movements in Z
-  #define BABYSTEP_Z_MULTIPLICATOR 2 //faster z movements
-  
-  #ifdef COREXY
-    #error BABYSTEPPING not implemented for COREXY yet.
-  #endif
-
-  #ifdef DELTA
-    #ifdef BABYSTEP_XY
-      #error BABYSTEPPING only implemented for Z axis on deltabots.
-    #endif
-  #endif
-#endif
 
 // extruder advance constant (s2/mm3)
 //
@@ -371,7 +351,7 @@ const unsigned int dropsegments=5; //everything with less than this number of st
 
 //adds support for experimental filament exchange support M600; requires display
 #ifdef ULTIPANEL
-  #define FILAMENTCHANGEENABLE
+  //#define FILAMENTCHANGEENABLE
   #ifdef FILAMENTCHANGEENABLE
     #define FILAMENTCHANGE_XPOS 3
     #define FILAMENTCHANGE_YPOS 3
@@ -435,6 +415,5 @@ const unsigned int dropsegments=5; //everything with less than this number of st
   #undef BED_MINTEMP
   #undef BED_MAXTEMP
 #endif
-
 
 #endif //__CONFIGURATION_ADV_H

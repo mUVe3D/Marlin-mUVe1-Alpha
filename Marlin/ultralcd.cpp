@@ -7,6 +7,7 @@
 #include "temperature.h"
 #include "stepper.h"
 #include "ConfigurationStore.h"
+#include "laser.h"
 
 int8_t encoderDiff; /* encoderDiff is updated from interrupt context and added to encoderPosition every LCD update */
 
@@ -57,6 +58,27 @@ static void lcd_set_contrast();
 #endif
 static void lcd_control_retract_menu();
 static void lcd_sdcard_menu();
+#ifdef LASER
+	static void lcd_laser_focus_menu();
+	static void lcd_laser_menu();
+	static void lcd_laser_test_fire_menu();
+	static void laser_test_fire(uint8_t power, uint8_t dwell);
+	static void laser_set_focus(float f_length);
+	static void action_laser_focus_custom();
+	static void action_laser_focus_1mm();
+	static void action_laser_focus_2mm();
+	static void action_laser_focus_3mm();
+	static void action_laser_focus_4mm();
+	static void action_laser_focus_5mm();
+	static void action_laser_focus_6mm();
+	static void action_laser_focus_7mm();
+	static void action_laser_test_20_50ms();
+	static void action_laser_test_20_100ms();
+	static void action_laser_test_100_50ms();
+	static void action_laser_test_100_100ms();
+	static void action_laser_acc_on();
+	static void action_laser_acc_off();
+#endif
 
 static void lcd_quick_feedback();//Cause an LCD refresh, and give the user visual or audiable feedback that something has happend
 
@@ -104,6 +126,7 @@ static void menu_action_setting_edit_callback_long5(const char* pstr, unsigned l
     if (encoderPosition > 0x8000) encoderPosition = 0; \
     if (encoderPosition / ENCODER_STEPS_PER_MENU_ITEM < currentMenuViewOffset) currentMenuViewOffset = encoderPosition / ENCODER_STEPS_PER_MENU_ITEM;\
     uint8_t _lineNr = currentMenuViewOffset, _menuItemNr; \
+    bool wasClicked = LCD_CLICKED;\
     for(uint8_t _drawLineNr = 0; _drawLineNr < LCD_HEIGHT; _drawLineNr++, _lineNr++) { \
         _menuItemNr = 0;
 #define MENU_ITEM(type, label, args...) do { \
@@ -142,7 +165,6 @@ uint8_t currentMenuViewOffset;              /* scroll offset in the current menu
 uint32_t blocking_enc;
 uint8_t lastEncoderBits;
 uint32_t encoderPosition;
-bool wasClicked;
 #if (SDCARDDETECT > 0)
 bool lcd_oldcardstatus;
 #endif
@@ -201,7 +223,7 @@ static void lcd_status_screen()
     else if (feedmultiply == 100 && int(encoderPosition) < -ENCODER_FEEDRATE_DEADZONE)
     {
         feedmultiply += int(encoderPosition) + ENCODER_FEEDRATE_DEADZONE;
-        encoderPosition = 0;	
+        encoderPosition = 0;
     }
     else if (feedmultiply != 100)
     {
@@ -249,6 +271,11 @@ static void lcd_main_menu()
 {
     START_MENU();
     MENU_ITEM(back, MSG_WATCH, lcd_status_screen);
+	#ifdef LASER
+    	if (!(movesplanned() || IS_SD_PRINTING)) {
+    		MENU_ITEM(submenu, "Laser Functions", lcd_laser_menu);
+    	}
+	#endif
     if (movesplanned() || IS_SD_PRINTING)
     {
         MENU_ITEM(submenu, MSG_TUNE, lcd_tune_menu);
@@ -322,73 +349,12 @@ static void lcd_cooldown()
     lcd_return_to_status();
 }
 
-#ifdef BABYSTEPPING
-static void lcd_babystep_x()
-{
-    if (encoderPosition != 0)
-    {
-        babystepsTodo[X_AXIS]+=(int)encoderPosition;
-        encoderPosition=0;
-        lcdDrawUpdate = 1;
-    }
-    if (lcdDrawUpdate)
-    {
-        lcd_implementation_drawedit(PSTR("Babystepping X"),"");
-    }
-    if (LCD_CLICKED)
-    {
-        lcd_quick_feedback();
-        currentMenu = lcd_tune_menu;
-        encoderPosition = 0;
-    }
-}
-
-static void lcd_babystep_y()
-{
-    if (encoderPosition != 0)
-    {
-        babystepsTodo[Y_AXIS]+=(int)encoderPosition;
-        encoderPosition=0;
-        lcdDrawUpdate = 1;
-    }
-    if (lcdDrawUpdate)
-    {
-        lcd_implementation_drawedit(PSTR("Babystepping Y"),"");
-    }
-    if (LCD_CLICKED)
-    {
-        lcd_quick_feedback();
-        currentMenu = lcd_tune_menu;
-        encoderPosition = 0;
-    }
-}
-
-static void lcd_babystep_z()
-{
-    if (encoderPosition != 0)
-    {
-        babystepsTodo[Z_AXIS]+=BABYSTEP_Z_MULTIPLICATOR*(int)encoderPosition;
-        encoderPosition=0;
-        lcdDrawUpdate = 1;
-    }
-    if (lcdDrawUpdate)
-    {
-        lcd_implementation_drawedit(PSTR("Babystepping Z"),"");
-    }
-    if (LCD_CLICKED)
-    {
-        lcd_quick_feedback();
-        currentMenu = lcd_tune_menu;
-        encoderPosition = 0;
-    }
-}
-#endif //BABYSTEPPING
-
 static void lcd_tune_menu()
 {
     START_MENU();
     MENU_ITEM(back, MSG_MAIN, lcd_main_menu);
     MENU_ITEM_EDIT(int3, MSG_SPEED, &feedmultiply, 10, 999);
+#ifndef LASER
     MENU_ITEM_EDIT(int3, MSG_NOZZLE, &target_temperature[0], 0, HEATER_0_MAXTEMP - 15);
 #if TEMP_SENSOR_1 != 0
     MENU_ITEM_EDIT(int3, MSG_NOZZLE1, &target_temperature[1], 0, HEATER_1_MAXTEMP - 15);
@@ -401,16 +367,9 @@ static void lcd_tune_menu()
 #endif
     MENU_ITEM_EDIT(int3, MSG_FAN_SPEED, &fanSpeed, 0, 255);
     MENU_ITEM_EDIT(int3, MSG_FLOW, &extrudemultiply, 10, 999);
-    
-#ifdef BABYSTEPPING
-    #ifdef BABYSTEP_XY
-      MENU_ITEM(submenu, "Babystep X", lcd_babystep_x);
-      MENU_ITEM(submenu, "Babystep Y", lcd_babystep_y);
-    #endif //BABYSTEP_XY
-    MENU_ITEM(submenu, "Babystep Z", lcd_babystep_z);
-#endif
 #ifdef FILAMENTCHANGEENABLE
      MENU_ITEM(gcode, MSG_FILAMENTCHANGE, PSTR("M600"));
+#endif
 #endif
     END_MENU();
 }
@@ -423,11 +382,18 @@ static void lcd_prepare_menu()
     //MENU_ITEM(function, MSG_AUTOSTART, lcd_autostart_sd);
 #endif
     MENU_ITEM(gcode, MSG_DISABLE_STEPPERS, PSTR("M84"));
+    MENU_ITEM(gcode, "Enable Steppers", PSTR("M17"));
+#ifdef LASER
+    MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28 X Y F2000"));
+#else
     MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28"));
-    //MENU_ITEM(gcode, MSG_SET_ORIGIN, PSTR("G92 X0 Y0 Z0"));
+#endif
+    MENU_ITEM(gcode, MSG_SET_ORIGIN, PSTR("G92 X0 Y0 Z0"));
+#ifndef LASER
     MENU_ITEM(function, MSG_PREHEAT_PLA, lcd_preheat_pla);
     MENU_ITEM(function, MSG_PREHEAT_ABS, lcd_preheat_abs);
     MENU_ITEM(function, MSG_COOLDOWN, lcd_cooldown);
+#endif
 #if PS_ON_PIN > -1
     if (powersupply)
     {
@@ -601,7 +567,9 @@ static void lcd_control_menu()
 {
     START_MENU();
     MENU_ITEM(back, MSG_MAIN, lcd_main_menu);
+#ifndef LASER
     MENU_ITEM(submenu, MSG_TEMPERATURE, lcd_control_temperature_menu);
+#endif
     MENU_ITEM(submenu, MSG_MOTION, lcd_control_motion_menu);
 #ifdef DOGLCD
 //    MENU_ITEM_EDIT(int3, MSG_CONTRAST, &lcd_contrast, 0, 63);
@@ -617,7 +585,7 @@ static void lcd_control_menu()
     MENU_ITEM(function, MSG_RESTORE_FAILSAFE, Config_ResetDefault);
     END_MENU();
 }
-
+#ifndef LASER
 static void lcd_control_temperature_menu()
 {
 #ifdef PIDTEMP
@@ -688,7 +656,7 @@ static void lcd_control_temperature_preheat_abs_settings_menu()
 #endif
     END_MENU();
 }
-
+#endif
 static void lcd_control_motion_menu()
 {
     START_MENU();
@@ -711,7 +679,7 @@ static void lcd_control_motion_menu()
     MENU_ITEM_EDIT(float52, MSG_XSTEPS, &axis_steps_per_unit[X_AXIS], 5, 9999);
     MENU_ITEM_EDIT(float52, MSG_YSTEPS, &axis_steps_per_unit[Y_AXIS], 5, 9999);
     MENU_ITEM_EDIT(float51, MSG_ZSTEPS, &axis_steps_per_unit[Z_AXIS], 5, 9999);
-    MENU_ITEM_EDIT(float51, MSG_ESTEPS, &axis_steps_per_unit[E_AXIS], 5, 9999);    
+    MENU_ITEM_EDIT(float51, MSG_ESTEPS, &axis_steps_per_unit[E_AXIS], 5, 9999);
 #ifdef ABORT_ON_ENDSTOP_HIT_FEATURE_ENABLED
     MENU_ITEM_EDIT(bool, "Endstop abort", &abort_on_endstop_hit);
 #endif
@@ -758,6 +726,122 @@ static void lcd_control_retract_menu()
 }
 #endif
 
+#ifdef LASER
+static void lcd_laser_menu()
+{
+	START_MENU();
+	MENU_ITEM(back, MSG_MAIN, lcd_main_menu);
+	MENU_ITEM(submenu, "Set Focus", lcd_laser_focus_menu);
+	MENU_ITEM(submenu, "Test Fire", lcd_laser_test_fire_menu);
+	#ifdef LASER_PERIPHERALS
+	if (laser_peripherals_ok()) {
+		MENU_ITEM(function, "Turn On Pumps/Fans", action_laser_acc_on);
+	} else if (!(movesplanned() || IS_SD_PRINTING)) {
+		MENU_ITEM(function, "Turn Off Pumps/Fans", action_laser_acc_off);
+	}
+	#endif // LASER_PERIPHERALS
+	END_MENU();
+}
+
+static void lcd_laser_test_fire_menu() {
+	START_MENU();
+	MENU_ITEM(back, "Laser Functions", lcd_laser_menu);
+	MENU_ITEM(function, " 20%  50ms", action_laser_test_20_50ms);
+	MENU_ITEM(function, " 20% 100ms", action_laser_test_20_100ms);
+	MENU_ITEM(function, "100%  50ms", action_laser_test_100_50ms);
+	MENU_ITEM(function, "100% 100ms", action_laser_test_100_100ms);
+	END_MENU();
+}
+
+
+static void action_laser_acc_on() {
+	enquecommand_P(PSTR("M80"));
+}
+
+static void action_laser_acc_off() {
+	enquecommand_P(PSTR("M81"));
+}
+
+static void action_laser_test_20_50ms() {
+	laser_test_fire(20, 50);
+}
+
+static void action_laser_test_20_100ms() {
+	laser_test_fire(20, 100);
+}
+
+static void action_laser_test_100_50ms() {
+	laser_test_fire(100, 50);
+}
+
+static void action_laser_test_100_100ms() {
+	laser_test_fire(100, 100);
+}
+
+static void laser_test_fire(uint8_t power, uint8_t dwell) {
+	enquecommand_P(PSTR("M80"));  // Enable laser accessories since we don't know if its been done (and there's no penalty for doing it again).
+    laser_fire(power);
+	delay(dwell);
+	laser_extinguish();
+}
+float focalLength = 0;
+static void lcd_laser_focus_menu() {
+	START_MENU();
+	MENU_ITEM(back, "Laser Functions", lcd_laser_menu);
+	MENU_ITEM(function, "1mm", action_laser_focus_1mm);
+	MENU_ITEM(function, "2mm", action_laser_focus_2mm);
+	MENU_ITEM(function, "3mm - 1/8in", action_laser_focus_3mm);
+	MENU_ITEM(function, "4mm", action_laser_focus_4mm);
+	MENU_ITEM(function, "5mm", action_laser_focus_5mm);
+	MENU_ITEM(function, "6mm - 1/4in", action_laser_focus_6mm);
+	MENU_ITEM(function, "7mm", action_laser_focus_7mm);
+	MENU_ITEM_EDIT_CALLBACK(float32, "Custom", &focalLength, 0, LASER_FOCAL_HEIGHT, action_laser_focus_custom);
+	END_MENU();
+}
+
+static void action_laser_focus_custom() {
+	laser_set_focus(focalLength);
+}
+
+static void action_laser_focus_1mm() {
+	laser_set_focus(1);
+}
+
+static void action_laser_focus_2mm() {
+	laser_set_focus(2);
+}
+
+static void action_laser_focus_3mm() {
+	laser_set_focus(3);
+}
+
+static void action_laser_focus_4mm() {
+	laser_set_focus(4);
+}
+
+static void action_laser_focus_5mm() {
+	laser_set_focus(5);
+}
+
+static void action_laser_focus_6mm() {
+	laser_set_focus(6);
+}
+
+static void action_laser_focus_7mm() {
+	laser_set_focus(7);
+}
+static void laser_set_focus(float f_length) {
+	if (!has_axis_homed[Z_AXIS]) {
+		enquecommand_P(PSTR("G28 Z F150"));
+	}
+	focalLength = f_length;
+	float focus = LASER_FOCAL_HEIGHT - f_length;
+	char cmd[20];
+
+	sprintf_P(cmd, PSTR("G0 Z%s F150"), ftostr52(focus));
+	enquecommand(cmd);
+}
+#endif
 #if SDCARDDETECT == -1
 static void lcd_sd_refresh()
 {
@@ -773,7 +857,7 @@ static void lcd_sd_updir()
 
 void lcd_sdcard_menu()
 {
-    if (lcdDrawUpdate == 0 && LCD_CLICKED == 0) 
+    if (lcdDrawUpdate == 0 && LCD_CLICKED == 0)
         return;	// nothing to do (so don't thrash the SD card)
     uint16_t fileCnt = card.getnrfilenames();
     START_MENU();
@@ -787,7 +871,7 @@ void lcd_sdcard_menu()
     }else{
         MENU_ITEM(function, LCD_STR_FOLDER "..", lcd_sd_updir);
     }
-    
+
     for(uint16_t i=0;i<fileCnt;i++)
     {
         if (_menuItemNr == _lineNr)
@@ -970,14 +1054,14 @@ void lcd_init()
 
 #ifdef NEWPANEL
     pinMode(BTN_EN1,INPUT);
-    pinMode(BTN_EN2,INPUT); 
+    pinMode(BTN_EN2,INPUT);
     pinMode(SDCARDDETECT,INPUT);
     WRITE(BTN_EN1,HIGH);
     WRITE(BTN_EN2,HIGH);
   #if BTN_ENC > 0
-    pinMode(BTN_ENC,INPUT); 
+    pinMode(BTN_ENC,INPUT);
     WRITE(BTN_ENC,HIGH);
-  #endif    
+  #endif
   #ifdef REPRAPWORLD_KEYPAD
     pinMode(SHIFT_CLK,OUTPUT);
     pinMode(SHIFT_LD,OUTPUT);
@@ -991,7 +1075,7 @@ void lcd_init()
     pinMode(SHIFT_EN,OUTPUT);
     pinMode(SHIFT_OUT,INPUT);
     WRITE(SHIFT_OUT,HIGH);
-    WRITE(SHIFT_LD,HIGH); 
+    WRITE(SHIFT_LD,HIGH);
     WRITE(SHIFT_EN,LOW);
 #endif//!NEWPANEL
 #if (SDCARDDETECT > 0)
@@ -999,28 +1083,28 @@ void lcd_init()
     lcd_oldcardstatus = IS_SD_INSERTED;
 #endif//(SDCARDDETECT > 0)
     lcd_buttons_update();
-#ifdef ULTIPANEL    
+#ifdef ULTIPANEL
     encoderDiff = 0;
-#endif    
+#endif
 }
 
 void lcd_update()
 {
     static unsigned long timeoutToStatus = 0;
-    
+
     lcd_buttons_update();
-    
+
     #ifdef LCD_HAS_SLOW_BUTTONS
     buttons |= lcd_implementation_read_slow_buttons(); // buttons which take too long to read in interrupt context
     #endif
-    
+
     #if (SDCARDDETECT > 0)
     if((IS_SD_INSERTED != lcd_oldcardstatus))
     {
         lcdDrawUpdate = 2;
         lcd_oldcardstatus = IS_SD_INSERTED;
         lcd_implementation_init(); // to maybe revive the lcd if static electricty killed it.
-        
+
         if(lcd_oldcardstatus)
         {
             card.initsd();
@@ -1033,10 +1117,9 @@ void lcd_update()
         }
     }
     #endif//CARDINSERTED
-    
+
     if (lcd_next_update_millis < millis())
     {
-      wasClicked = LCD_CLICKED;
 #ifdef ULTIPANEL
 		#ifdef REPRAPWORLD_KEYPAD
         	if (REPRAPWORLD_KEYPAD_MOVE_Z_UP) {
@@ -1075,7 +1158,7 @@ void lcd_update()
 #ifdef DOGLCD        // Changes due to different driver architecture of the DOGM display
         blink++;     // Variable for fan animation and alive dot
         u8g.firstPage();
-        do 
+        do
         {
             u8g.setFont(u8g_font_6x10_marlin);
             u8g.setPrintPos(125,0);
@@ -1085,7 +1168,7 @@ void lcd_update()
             (*currentMenu)();
             if (!lcdDrawUpdate)  break; // Terminate display update, when nothing new to draw. This must be done before the last dogm.next()
         } while( u8g.nextPage() );
-#else        
+#else
         (*currentMenu)();
 #endif
 
@@ -1139,7 +1222,7 @@ void lcd_reset_alert_level()
 void lcd_setcontrast(uint8_t value)
 {
     lcd_contrast = value & 63;
-    u8g.setContrast(lcd_contrast);	
+    u8g.setContrast(lcd_contrast);
 }
 #endif
 
@@ -1176,7 +1259,7 @@ void lcd_buttons_update()
     WRITE(SHIFT_LD,HIGH);
     unsigned char tmp_buttons=0;
     for(int8_t i=0;i<8;i++)
-    { 
+    {
         newbutton = newbutton>>1;
         if(READ(SHIFT_OUT))
             newbutton|=(1<<7);
@@ -1226,14 +1309,14 @@ void lcd_buttons_update()
 }
 
 void lcd_buzz(long duration, uint16_t freq)
-{ 
+{
 #ifdef LCD_USE_I2C_BUZZER
   lcd.buzz(duration,freq);
-#endif   
+#endif
 }
 
-bool lcd_clicked() 
-{ 
+bool lcd_clicked()
+{
   return LCD_CLICKED;
 }
 #endif//ULTIPANEL
@@ -1373,6 +1456,7 @@ char *itostr4(const int &xx)
   conv[4]=0;
   return conv;
 }
+
 
 //  convert float to string with 12345 format
 char *ftostr5(const float &x)

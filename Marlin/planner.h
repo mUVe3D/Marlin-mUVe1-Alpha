@@ -18,7 +18,7 @@
   along with Grbl.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// This module is to be considered a sub-module of stepper.c. Please don't include 
+// This module is to be considered a sub-module of stepper.c. Please don't include
 // this file from any other module.
 
 #ifndef planner_h
@@ -26,11 +26,11 @@
 
 #include "Marlin.h"
 
-#ifdef ENABLE_AUTO_BED_LEVELING
-#include "vector_3.h"
-#endif // ENABLE_AUTO_BED_LEVELING
+#ifdef LASER
+#include "laser.h"
+#endif
 
-// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in 
+// This struct is used when buffering the setup for each linear movement "nominal" values are as specified in
 // the source g-code and may never actually be reached if acceleration management is active.
 typedef struct {
   // Fields used by the bresenham algorithm for tracing the line
@@ -50,7 +50,7 @@ typedef struct {
 
   // Fields used by the motion planner to manage acceleration
 //  float speed_x, speed_y, speed_z, speed_e;        // Nominal mm/sec for each axis
-  float nominal_speed;                               // The nominal speed for this block in mm/sec 
+  float nominal_speed;                               // The nominal speed for this block in mm/sec
   float entry_speed;                                 // Entry speed at previous-current junction in mm/sec
   float max_entry_speed;                             // Maximum allowable junction entry speed in mm/sec
   float millimeters;                                 // The total travel of this block in mm
@@ -59,51 +59,38 @@ typedef struct {
   unsigned char nominal_length_flag;                 // Planner flag for nominal speed always reached
 
   // Settings for the trapezoid generator
-  unsigned long nominal_rate;                        // The nominal step rate for this block in step_events/sec 
-  unsigned long initial_rate;                        // The jerk-adjusted step rate at start of block  
+  unsigned long nominal_rate;                        // The nominal step rate for this block in step_events/sec
+  unsigned long initial_rate;                        // The jerk-adjusted step rate at start of block
   unsigned long final_rate;                          // The minimal rate at exit
   unsigned long acceleration_st;                     // acceleration steps/sec^2
   unsigned long fan_speed;
   #ifdef BARICUDA
-  unsigned long valve_pressure;
-  unsigned long e_to_p_pressure;
-  #endif
+    unsigned long valve_pressure;
+    unsigned long e_to_p_pressure;
+  #endif // BARICUDA
+  #ifdef LASER
+	uint8_t laser_mode; // LASER_CONTINUOUS, LASER_PULSED, LASER_RASTER
+	bool laser_status; // LASER_OFF, LASER_ON
+    float laser_ppm; // pulses per millimeter, for pulsed and raster firing modes
+    unsigned long laser_duration; // laser firing duration in microseconds, for pulsed and raster firing modes
+    long steps_l; // step count between firings of the laser, for pulsed firing mode
+    int laser_intensity; // Laser firing instensity in clock cycles for the PWM timer
+    #ifdef LASER_RASTER
+      char laser_raster_data[LASER_MAX_RASTER_LINE];
+    #endif // LASER_RASTER
+  #endif // LASER
   volatile char busy;
-  #ifdef MUVE
-  bool laser;
-  float laser_power;
-  uint32_t laser_pulse;
-  long steps_l;
-  #endif
 } block_t;
 
-#ifdef ENABLE_AUTO_BED_LEVELING
-// this holds the required transform to compensate for bed level
-extern matrix_3x3 plan_bed_level_matrix;
-#endif // #ifdef ENABLE_AUTO_BED_LEVELING
-
-// Initialize the motion plan subsystem      
+// Initialize the motion plan subsystem
 void plan_init();
 
-// Add a new linear movement to the buffer. x, y and z is the signed, absolute target position in 
+// Add a new linear movement to the buffer. x, y and z is the signed, absolute target position in
 // millimaters. Feed rate specifies the speed of the motion.
-
-#ifdef ENABLE_AUTO_BED_LEVELING
-void plan_buffer_line(float x, float y, float z, const float &e, float feed_rate, const uint8_t &extruder);
-
-// Get the position applying the bed level matrix if enabled
-vector_3 plan_get_position();
-#else
-void plan_buffer_line(const float &x, const float &y, const float &z, const float &e, float feed_rate, const uint8_t &extruder, bool laser = 0, float laser_power = 255, float laser_ppm = 10, uint32_t laser_pulse = 3);
-#endif // ENABLE_AUTO_BED_LEVELING
+void plan_buffer_line(const float &x, const float &y, const float &z, const float &e, float feed_rate, const uint8_t &extruder);
 
 // Set position. Used for G92 instructions.
-#ifdef ENABLE_AUTO_BED_LEVELING
-void plan_set_position(float x, float y, float z, const float &e);
-#else
 void plan_set_position(const float &x, const float &y, const float &z, const float &e);
-#endif // ENABLE_AUTO_BED_LEVELING
-
 void plan_set_e_position(const float &e);
 
 
@@ -131,26 +118,26 @@ extern unsigned long axis_steps_per_sqr_second[NUM_AXIS];
     extern float autotemp_factor;
 #endif
 
-    
+
 
 
 extern block_t block_buffer[BLOCK_BUFFER_SIZE];            // A ring buffer for motion instfructions
 extern volatile unsigned char block_buffer_head;           // Index of the next block to be pushed
-extern volatile unsigned char block_buffer_tail; 
+extern volatile unsigned char block_buffer_tail;
 // Called when the current block is no longer needed. Discards the block and makes the memory
-// availible for new blocks.    
-FORCE_INLINE void plan_discard_current_block()  
+// availible for new blocks.
+FORCE_INLINE void plan_discard_current_block()
 {
   if (block_buffer_head != block_buffer_tail) {
-    block_buffer_tail = (block_buffer_tail + 1) & (BLOCK_BUFFER_SIZE - 1);  
+    block_buffer_tail = (block_buffer_tail + 1) & (BLOCK_BUFFER_SIZE - 1);
   }
 }
 
 // Gets the current block. Returns NULL if buffer empty
-FORCE_INLINE block_t *plan_get_current_block() 
+FORCE_INLINE block_t *plan_get_current_block()
 {
-  if (block_buffer_head == block_buffer_tail) { 
-    return(NULL); 
+  if (block_buffer_head == block_buffer_tail) {
+    return(NULL);
   }
   block_t *block = &block_buffer[block_buffer_tail];
   block->busy = true;
@@ -158,10 +145,10 @@ FORCE_INLINE block_t *plan_get_current_block()
 }
 
 // Gets the current block. Returns NULL if buffer empty
-FORCE_INLINE bool blocks_queued() 
+FORCE_INLINE bool blocks_queued()
 {
-  if (block_buffer_head == block_buffer_tail) { 
-    return false; 
+  if (block_buffer_head == block_buffer_tail) {
+    return false;
   }
   else
     return true;
