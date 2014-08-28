@@ -1,4 +1,4 @@
-*Antiquated Firmware* Do not use
+*Antiquated Firmware, Do Not Use*
 
 ===========================
 Open Laser Control Additions
